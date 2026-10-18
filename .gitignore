@@ -1,0 +1,19 @@
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials
+secrets/
+
+# Terraform generated files
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfplan
+
+# Logs and temporary files
+*.log
+Thumbs.db
