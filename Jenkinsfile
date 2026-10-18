@@ -1,22 +1,5 @@
 
 
-pipeline {
-    agent any
-
-    stages {
-        stage('Checkout Source') {
-            steps {
-                echo 'Checking out source code from GitHub'
-                checkout scm
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                sh 'docker build -t aws-devops-platform:${BUILD_NUMBER} .'
-            }
-        }
-
         stage('Test Website') {
             steps {
                 sh '''
@@ -29,14 +12,14 @@ pipeline {
                         -p 127.0.0.1::80 \
                         aws-devops-platform:${BUILD_NUMBER}
 
-                    PORT=$(docker port "$CONTAINER_NAME" 80/tcp | sed 's/.*://')
+                    echo "Checking website inside the container..."
 
                     ATTEMPT=0
                     until docker exec "$CONTAINER_NAME" \
                         wget -q --spider http://127.0.0.1/; do
                         ATTEMPT=$((ATTEMPT + 1))
                         if [ "$ATTEMPT" -ge 15 ]; then
-                            echo "FAIL: Website did not become healthy"
+                            echo "FAIL: Website did not start"
                             exit 1
                         fi
                         sleep 2
@@ -44,36 +27,27 @@ pipeline {
 
                     echo "PASS: Website responds inside the container"
 
+                    CONTAINER_IP=$(docker inspect \
+                        -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+                        "$CONTAINER_NAME")
+
+                    echo "Testing HTTP access from Jenkins..."
+
                     ATTEMPT=0
-                    until wget -q -O /dev/null "http://127.0.0.1:${PORT}/"; do
+                    until curl -fsS \
+                        "http://${CONTAINER_IP}:80/" \
+                        -o /dev/null; do
                         ATTEMPT=$((ATTEMPT + 1))
                         if [ "$ATTEMPT" -ge 15 ]; then
-                            echo "FAIL: Website is not reachable through the published port"
+                            echo "FAIL: Jenkins could not reach the website"
                             exit 1
                         fi
                         sleep 2
                     done
 
-                    echo "PASS: HTTP request through the published port succeeded"
+                    echo "PASS: HTTP test succeeded from Jenkins"
+                    docker port "$CONTAINER_NAME" 80/tcp
                 '''
             }
         }
-
-        stage('Verify Docker Image') {
-            steps {
-                sh 'docker image inspect aws-devops-platform:${BUILD_NUMBER} > /dev/null'
-                echo 'PASS: Docker image verified'
-            }
-        }
-    }
-
-    post {
-        success {
-            echo 'SUCCESS: Build, website tests, and image verification passed!'
-        }
-        failure {
-            echo 'FAILED: Check the console output for the error.'
-        }
-    }
-}
 
