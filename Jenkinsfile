@@ -1,4 +1,20 @@
 
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout Source') {
+            steps {
+                echo 'Checking out source code from GitHub'
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t aws-devops-platform:${BUILD_NUMBER} .'
+            }
+        }
 
         stage('Test Website') {
             steps {
@@ -12,7 +28,7 @@
                         -p 127.0.0.1::80 \
                         aws-devops-platform:${BUILD_NUMBER}
 
-                    echo "Checking website inside the container..."
+                    echo "Waiting for the website..."
 
                     ATTEMPT=0
                     until docker exec "$CONTAINER_NAME" \
@@ -31,23 +47,39 @@
                         -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
                         "$CONTAINER_NAME")
 
-                    echo "Testing HTTP access from Jenkins..."
-
                     ATTEMPT=0
                     until curl -fsS \
                         "http://${CONTAINER_IP}:80/" \
                         -o /dev/null; do
                         ATTEMPT=$((ATTEMPT + 1))
                         if [ "$ATTEMPT" -ge 15 ]; then
-                            echo "FAIL: Jenkins could not reach the website"
+                            echo "FAIL: HTTP test from Jenkins failed"
                             exit 1
                         fi
                         sleep 2
                     done
 
                     echo "PASS: HTTP test succeeded from Jenkins"
+                    echo "Published port:"
                     docker port "$CONTAINER_NAME" 80/tcp
                 '''
             }
         }
 
+        stage('Verify Docker Image') {
+            steps {
+                sh 'docker image inspect aws-devops-platform:${BUILD_NUMBER} > /dev/null'
+                echo 'PASS: Docker image verified'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'SUCCESS: Build, website tests, and image verification passed!'
+        }
+        failure {
+            echo 'FAILED: Check the console output for the error.'
+        }
+    }
+}
