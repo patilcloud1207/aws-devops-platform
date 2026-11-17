@@ -1,13 +1,22 @@
-
-
-pipeline {
+﻿pipeline {
     agent any
+
+    tools {
+        maven 'Maven-3.9'
+    }
 
     stages {
         stage('Checkout Source') {
             steps {
-                echo 'Checking out source code from GitHub'
+                echo 'Checking out source code'
                 checkout scm
+            }
+        }
+
+        stage('Maven Build') {
+            steps {
+                sh 'mvn -B clean package'
+                echo 'Maven build successful'
             }
         }
 
@@ -21,7 +30,6 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-
                     CONTAINER_NAME="aws-devops-test-${BUILD_NUMBER}"
                     trap 'docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true' EXIT
 
@@ -29,17 +37,16 @@ pipeline {
                         aws-devops-platform:${BUILD_NUMBER}
 
                     ATTEMPT=0
-                    until docker exec "$CONTAINER_NAME" \
-                        wget -q --spider http://127.0.0.1/; do
+                    until docker exec "$CONTAINER_NAME" wget -q --spider http://127.0.0.1/; do
                         ATTEMPT=$((ATTEMPT + 1))
                         if [ "$ATTEMPT" -ge 15 ]; then
-                            echo "FAIL: Website test failed"
+                            echo "Website test failed"
                             exit 1
                         fi
                         sleep 2
                     done
 
-                    echo "PASS: Website test succeeded"
+                    echo "Website test passed"
                 '''
             }
         }
@@ -47,7 +54,7 @@ pipeline {
         stage('Verify Docker Image') {
             steps {
                 sh 'docker image inspect aws-devops-platform:${BUILD_NUMBER} > /dev/null'
-                echo 'PASS: Docker image verified'
+                echo 'Docker image verified'
             }
         }
 
@@ -56,8 +63,7 @@ pipeline {
                 sh '''
                     set -eu
 
-                    docker rm -f aws-devops-platform-app \
-                        >/dev/null 2>&1 || true
+                    docker rm -f aws-devops-platform-app >/dev/null 2>&1 || true
 
                     docker run -d \
                         --name aws-devops-platform-app \
@@ -66,17 +72,16 @@ pipeline {
                         aws-devops-platform:${BUILD_NUMBER}
 
                     ATTEMPT=0
-                    until docker exec aws-devops-platform-app \
-                        wget -q --spider http://127.0.0.1/; do
+                    until docker exec aws-devops-platform-app wget -q --spider http://127.0.0.1/; do
                         ATTEMPT=$((ATTEMPT + 1))
                         if [ "$ATTEMPT" -ge 15 ]; then
-                            echo "FAIL: Deployment health check failed"
+                            echo "Deployment health check failed"
                             exit 1
                         fi
                         sleep 2
                     done
 
-                    echo "PASS: Application deployed successfully"
+                    echo "Deployment successful"
                 '''
             }
         }
@@ -84,10 +89,10 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS: Build, tests, verification, and deployment passed!'
+            echo 'SUCCESS: CI/CD pipeline completed!'
         }
         failure {
-            echo 'FAILED: Check the Console Output.'
+            echo 'FAILED: Check Jenkins Console Output'
         }
     }
 }
